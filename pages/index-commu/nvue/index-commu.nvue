@@ -1,0 +1,178 @@
+<template>
+	<div class="index-commu" :style="{ height: $store.state.device.screenHeight - 49 + 'px' }">
+		<div class="navbar">
+			<text class="navbar-text" :class="{ bangs: bangs }">社区</text>
+		</div>
+		<div v-if="logged" class="content" :style="{ width: $store.state.device.screenWidth + 'px' }">
+			<div class="swiper-nav">
+				<div class="swiper-nav-items">
+					<div class="swiper-nav-item" v-for="(item, index) in typeList" :key="index" @tap="switchSwiper(index)">
+						<text class="swiper-nav-item-text" :class="{ 'swiper-nav-item-text-act': swiperActiveIndex === index }">{{ item }}</text>
+					</div>
+				</div>
+				<div class="swiper-nav-bar">
+					<div class="swiper-nav-bar-drog" :style="{ left: moveBarLeft + 'px' }">
+						<text class="swiper-nav-bar-drog-item"></text>
+					</div>
+				</div>
+			</div>
+			<swiper class="swiper" @scroll="scrollHandler" :duration="300" :current="swiperNowIndex" @change="onswiperchange" @animationfinish="animationfinish">
+				<swiper-item v-for="(item, typeIndex) in typeList" :key="typeIndex">
+					<list class="swiper-list" :loadmoreoffset="20" @loadmore="loadmore">
+						<refresh style="height: 60px; justify-content: center; align-items: center;" 
+							@refresh="onrefresh" @pullingdown="onpullingdown" :display="refreshing ? 'show' : 'hide'">
+							<text style="font-size: 14px; color: #666666;">{{ pulldownRefreshText }}</text>
+						</refresh>
+						<cell class="swiper-list-item" v-for="(item, index) in lists[typeIndex]" :key="index">
+							<list-item :item="item" :typeIndex="typeIndex" :listIndex="index" />
+						</cell>
+						<cell class="swiper-list-item-loading" :class="{ 'swiper-list-item-loading-center': !lists[typeIndex].length }">
+							<text v-if="page[typeIndex] > 0" class="swiper-list-item-loading-text">...加载中...</text>
+							<text v-else-if="page[typeIndex] === -1" class="swiper-list-item-loading-text">...网络崩溃了，下拉刷新试试...</text>
+							<text v-else class="swiper-list-item-loading-text">没有更多了</text>
+						</cell>
+					</list>
+				</swiper-item>
+			</swiper>
+		</div>
+		<div v-else class="login-btn">
+			<text class="btn" :style="{ bottom: screenHeight / 2 - 88 + 'px' }">登录/注册</text>
+		</div>
+	</div>
+</template>
+
+<script>
+	import listItem from './components/list-item.nvue'
+	import { commuRecommend, commuNewest, commuChanglai, commuCollect } from '@/apis/commu.js'
+	export default {
+		components: { listItem },
+		data() {
+			return {
+				isLoading: true,
+				refreshing: false,
+				moveBarLeft: 0,
+				swiperNowIndex: 0,
+				swiperFinishIndex: 0,
+				swiperActiveIndex: 0,
+				page: [1, 1, 1, 1],
+				pulldownRefreshText: '... 继续拉下刷新列表 ...',
+				lists: { 0: [], 1: [], 2: [], 3: [] }, // 数据
+				typeList: ['热门推荐', '最新更新', '常来微聊', '我的收藏'],
+				apis: [commuRecommend, commuNewest, commuChanglai, commuCollect]
+			}
+		},
+		computed: {
+			bangs() { return this.$store.state.device.bangs },
+			screenHeight() { return this.$store.state.device.screenHeight },
+			logged() { return this.$store.state.app.token.length === 0 ? false : true }
+		},
+		onShow() {
+			if (uni.getStorageSync('_INDEXARTICLETAP')) {
+				this.switchSwiper(2)
+				uni.removeStorageSync('_INDEXARTICLETAP')
+			}
+		},
+		onLoad() {
+			if (this.logged) {
+				this.request()
+			}
+		},
+		onBackPress() { // 返回时收起分享
+			if (uni._SHARE && uni._SHARE.isVisible()) {
+				uni._MASK.hide()
+				uni._SHARE.hide()
+				return true
+			}
+		},
+		watch: {
+			lists: {
+				handler(n) {
+					this.$store.commit('article/UPDATA', n)
+				},
+				deep: true,
+				immediate: true
+			}
+		},
+		methods: {
+			// onswiperscroll(e) {
+			// 	this.moveBarLeft = this.swiperFinishIndex * (this.$store.state.device.screenWidth / this.typeList.length) +  e.detail.dx / this.typeList.length
+			// },
+			onswiperchange({ detail: { current } }) {
+				this.swiperActiveIndex = current
+				this.moveBarLeft = this.swiperActiveIndex * (this.$store.state.device.screenWidth / this.typeList.length)
+			},
+			animationfinish({ detail: { current } }) {
+				this.swiperFinishIndex = this.swiperNowIndex = current
+				if (!this.lists[this.swiperNowIndex].length && this.page[this.swiperNowIndex] !== 0) { // 当当前类型数量为 0 且有不是 没有更多时请求列表
+					this.request()
+				}
+			},
+			switchSwiper(index) {
+				this.swiperActiveIndex = this.swiperNowIndex = index
+				this.moveBarLeft = this.swiperActiveIndex * (this.$store.state.device.screenWidth / this.typeList.length)
+			},
+			request(action) {
+				return new Promise((resolve, reject) => {
+					plus.nativeUI.showWaiting()
+					this.apis[this.swiperNowIndex]({ page: this.page[this.swiperNowIndex] }).then(res => {
+						resolve()
+						action ? this.lists[this.swiperNowIndex] = [] : ''
+						this.lists[this.swiperNowIndex] = [...this.lists[this.swiperNowIndex], ...res.data.list]
+						res.data.list.length < res.data.size ? this.page[this.swiperNowIndex] = 0 : this.page[this.swiperNowIndex]++ // 如果返回列表数量小于 10 表示没有更多了
+					}).catch(() => { // 网络请求失败 进入失败状态
+						resolve()
+						this.lists[this.swiperNowIndex] = []
+						this.page[this.swiperNowIndex] = -1
+					})
+				})
+			},
+			onrefresh(e) {
+				this.refreshing = true
+				this.pulldownRefreshText = '... 刷新中 ...'
+				this.page[this.swiperNowIndex] = 1
+				this.request('refresh').then(() => {
+					this.refreshing = false
+					this.pulldownRefreshText = '... 继续拉下刷新列表 ...'
+				})
+			},
+			onpullingdown(e) {
+				if (e.pullingDistance >= e.viewHeight) {
+					this.pulldownRefreshText = '... 松开手指刷新列表 ...'
+				} else {
+					this.pulldownRefreshText = '... 继续拉下刷新列表 ...'
+				}
+			},
+			loadmore() {
+				this.request()
+			},
+			scrollHandler() {
+				console.log(456)
+			}
+		}
+	}
+</script>
+
+
+<style>
+.index-commu { background-color: #B2B2B2; }
+.navbar { justify-content: flex-end; align-items: center; background-color: #FFFFFF; height: 130rpx; border-bottom-color: #B2B2B2; border-bottom-width: 2rpx; }
+.navbar-text { font-size: 40rpx; margin-bottom: 24rpx; }
+.bangs { margin-bottom: 16rpx; }
+.content { flex: 1; background-color: #F2F2F2; }
+.swiper-nav { height: 84rpx; width: 750rpx; background-color: #FFFFFF; flex-direction: column; }
+.swiper-nav-items { flex: 1; width: 750rpx; flex-direction: row; }
+.swiper-nav-bar { height: 6rpx; width: 750rpx; position: relative; }
+.swiper-nav-bar-drog { position: absolute; left: 0px; top: 0px; width: 187.5rpx; height: 6rpx; align-items: center; }
+.swiper-nav-bar-drog-item { height: 6rpx; background-color: #F76454; width: 100rpx; } 
+.swiper-nav-item { flex: 1; justify-content: center; align-items: center; height: 88rpx; }
+.swiper-nav-item-text { font-size: 32rpx; color: #666666; }
+.swiper-nav-item-text-act { color: #F76454; }
+.swiper { flex: 1; width: 750rpx; background-color: #FFFFFF; }
+.swiper-list { background-color: #E5E5E5; }
+.swiper-list-item { border-top-color: #F2F2F2; border-top-width: 10rpx;  background-color: #FFFFFF; padding-left: 30rpx; padding-right: 30rpx; }
+.swiper-list-item-loading { justify-content: center; align-items: center; height: 60rpx; }
+.swiper-list-item-loading-center { flex: 1; }
+.swiper-list-item-loading-text { color: #666666; font-size: 26rpx; }
+.login-btn { flex: 1; background-color: #FFFFFF; width: 750rpx; align-items: center; justify-content: center; }
+.btn { position: fixed; left: 176rpx; width: 400rpx; height: 88rpx; color: #FFFFFF; font-size: 33.3rpx; border-radius: 10rpx; background-color: #F76454; line-height: 88rpx; text-align: center; }
+</style>

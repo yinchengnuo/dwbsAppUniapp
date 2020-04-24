@@ -1,0 +1,124 @@
+<template>
+	<view class="list-item">
+		<view class="header">
+			<view class="header-left">
+				<view class="header-img-wrapper">
+					<image class="header-img" :src="item.avatar" mode="aspectFit"></image>
+				</view>
+				<view class="header-name-identity">
+					<text class="header-name">{{ item.author }}</text>
+					<text class="header-identity" v-if="item.off == 1">官方</text>
+				</view>
+			</view>
+			<text class="header-right">{{ item.created_at | DistanceNow }}</text>
+		</view>
+		<view v-if="item.type == 0" class="item-body-article" @tap="toDetail">
+			<text class="article-title">{{ item.title }}</text>
+			<text class="article-des">{{ item.summary }}...</text>
+			<view class="img-list">
+				<view class="img-list-item" v-for="item in item.imgurl" :key="item">
+					<image class="img-list-item-img" :src="item"></image>
+				</view>
+			</view>
+		</view>
+		<view v-else-if="item.type == 1" class="item-body-video" @tap="toDetail">
+			<text class="article-title">{{ item.title }}</text>
+			<text class="article-des">{{ item.summary }}...</text>
+			<view class="video-poster">
+				<image class="video-poster-img"  :src="item.imgurl[0]" mode="center"></image>
+				<image class="video-poster-play" src="../../../static/icon/Video.png"></image>
+			</view>
+		</view>
+		<view class="footer">
+			<view class="footer-item footer-left"  @tap="like()">
+				<image v-if="item.like" class="footer-item-img" src="../../../static/icon/like-fill.png"></image>
+				<image v-else class="footer-item-img" src="../../../static/icon/like.png"></image>
+				<text class="footer-item-text">点赞</text>
+			</view>
+			<view class="footer-item footer-center" @tap="collection()">
+				<image v-if="item.collection" class="footer-item-img" src="../../../static/icon/heart-fill.png"></image>
+				<image v-else class="footer-item-img" src="../../../static/icon/heart.png"></image>
+				<text class="footer-item-text">收藏</text>
+			</view>
+			<view class="footer-item footer-right" @tap="share">
+				<image class="footer-item-img" src="../../../static/icon/share.png"></image>
+				<text class="footer-item-text">分享</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import _share from '@/common/util/share.js'
+	import { ArticleURL } from '@/common/util/request.js'
+	export default {
+		props: {
+			typeIndex: Number,
+			listIndex: Number
+		},
+		filters: {
+			DistanceNow(t) {
+				const d = +new Date - Number(t)
+				if (d >= 0 && d < 10800000) {
+					return '刚刚发表' 
+				} else if (d >= 10800000 && d < 86400000) {
+					return `${Math.floor(d / 3600000)}小时前`
+				} else if (d >= 86400000) {
+					return `${Math.floor(d / 86400000)}天前`
+				}
+			}
+		},
+		computed: {
+			item() {
+				return this.$store.state.article.lists[this.typeIndex][this.listIndex]
+			}
+		},
+		methods: {
+			toDetail() {
+				uni.navigateTo({ url: '/pages/article-detail/article-detail?type=' + this.typeIndex + '&index=' + this.listIndex })
+			},
+			like() { // 点赞
+				this.$store.commit('article/LIKE', { listsIndex: this.typeIndex, commuIndex: this.listIndex })
+			}, 
+			collection() { // 收藏
+				this.$store.commit('article/COLLECTION', { listsIndex: this.typeIndex, commuIndex: this.listIndex })
+			},
+			share() { // 分享
+				_share({
+					type: 0,
+					title: this.item.title,
+					summary: this.item.summary,
+					imageUrl: this.item.imgurl[0],
+					href: ArticleURL + '?id=' + this.item.id
+				})
+			}
+		}
+	}
+</script>
+
+
+<style>
+.list-item {  }
+.header { height: 130rpx; flex-direction: row; justify-content: space-between; align-items: center; }
+.header-left { height: 80rpx; flex: 1; flex-direction: row; align-items: center; }
+.header-right { font-size: 24rpx; color: #999999; }
+.header-img-wrapper { width: 80rpx; height: 80rpx; border-radius: 80rpx; }
+.header-img { width: 80rpx; height: 80rpx; }
+.header-name-identity { margin-left: 18rpx; flex-direction: row; align-items: center; }
+.header-name { font-size: 28rpx; color: #505050; }
+.header-identity { width: 56rpx; height: 28rpx; background-color: #F76454; font-size: 20rpx; color: #FFFFFF; margin-left: 20rpx; text-align: center; line-height: 28rpx; border-radius: 4rpx; }
+.footer { height: 90rpx; flex-direction: row; align-items: center; border-top-color: #F2F2F2; border-top-width: 1px; margin-top: 20rpx; }
+.footer-item { height: 40rpx; flex: 1; flex-direction: row; align-items: center; justify-content: center; }
+.footer-item-img { width: 38rpx; height: 38rpx; }
+.footer-item-text { font-size: 24rpx; color: #666666; margin-left: 10rpx; }
+.footer-left { border-right-color: #F2F2F2; border-right-width: 1px; }
+.footer-right { border-left-color: #F2F2F2; border-left-width: 1px; }
+.video-poster { height: 280rpx; margin-top: 20rpx; border-radius: 20rpx; position: relative; }
+.video-poster-play { position: absolute; width: 68rpx; height: 68rpx; left: 311rpx; top: 106rpx; }
+.video-poster-img { width: 690rpx; height: 280rpx; }
+.article-title { font-size: 32rpx; }
+.article-des { font-size: 26rpx; color: #666666; margin-top: 10rpx; margin-bottom: 10rpx; }
+.img-list { flex-direction: row; height: 150rpx; justify-content: flex-start; }
+.img-list-item { height: 150rpx; width: 222rpx; border-radius: 10rpx; margin-right: 12rpx; }
+.img-list-item-img { height: 150rpx; width: 222rpx; }
+</style>
